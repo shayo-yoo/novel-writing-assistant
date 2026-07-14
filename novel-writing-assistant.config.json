@@ -1,0 +1,19 @@
+{
+  "enabledFileExtensions": [
+    "md",
+    "txt",
+    "markdown",
+    "json",
+    "js",
+    "ts",
+    "py",
+    "java",
+    "c",
+    "cpp",
+    "cs",
+    "html",
+    "css",
+    "xml"
+  ],
+  "highlightItems": []
+}

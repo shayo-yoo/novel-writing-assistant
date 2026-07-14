@@ -1,0 +1,73 @@
+{
+  "name": "novel-writing-assistant",
+  "displayName": "Novel Writing Assistant",
+  "description": "A VS Code extension for novel writing assistance with typing stats, duration tracking, word count, configurable text highlighting, and file-type filtering.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:novelWritingAssistant.openConfig",
+    "onCommand:novelWritingAssistant.highlightSelection",
+    "onCommand:novelWritingAssistant.clearHighlights"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "novelWritingAssistantContainer",
+          "title": "Novel Writing Assistant",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "novelWritingAssistantContainer": [
+        {
+            "icon": "icon.png",
+            "id": "novelWritingAssistantView",
+             "name": "Dashboard"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "novelWritingAssistant.openConfig",
+        "title": "Open Novel Writing Assistant Config"
+      },
+      {
+        "command": "novelWritingAssistant.highlightSelection",
+        "title": "Highlight Selected Text"
+      },
+      {
+        "command": "novelWritingAssistant.clearHighlights",
+        "title": "Clear All Highlight Rules"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "novelWritingAssistant.highlightSelection",
+          "when": "editorHasSelection && editorTextFocus",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
