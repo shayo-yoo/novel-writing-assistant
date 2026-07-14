@@ -119,7 +119,6 @@ let lastInputTime = Date.now();
 let typedCharactersCount = 0;
 let timer: NodeJS.Timeout | undefined;
 const decorationTypes: vscode.TextEditorDecorationType[] = [];
-let viewProvider: NovelWritingAssistantViewProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   extensionContext = context;
@@ -130,22 +129,25 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(runtimeStatusBar, typingStatusBar, speedStatusBar, wordCountStatusBar);
 
-  viewProvider = new NovelWritingAssistantViewProvider();
-
   void initializeExtension(context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand('novelWritingAssistant.openConfig', openConfigFile),
+    vscode.commands.registerCommand('novelWritingAssistant.openSettings', openSettings),
     vscode.commands.registerCommand('novelWritingAssistant.highlightSelection', handleHighlightSelection),
     vscode.commands.registerCommand('novelWritingAssistant.clearHighlights', clearHighlightRules),
-    vscode.window.registerWebviewViewProvider('novelWritingAssistantView', viewProvider),
     vscode.window.onDidChangeActiveTextEditor(() => updateAll()),
     vscode.workspace.onDidChangeTextDocument(event => {
       recordDocumentChange(event);
       updateAll();
     }),
     vscode.workspace.onDidOpenTextDocument(() => updateAll()),
-    vscode.workspace.onDidCloseTextDocument(() => updateAll())
+    vscode.workspace.onDidCloseTextDocument(() => updateAll()),
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('novelWritingAssistant')) {
+        void refreshConfiguration();
+      }
+    })
   );
 }
 
@@ -161,9 +163,20 @@ async function initializeExtension(context: vscode.ExtensionContext) {
     config = await loadConfig(context.extensionPath);
     startTimer();
     updateAll();
-    viewProvider?.refresh();
   } catch (error) {
     vscode.window.showErrorMessage(`Novel Writing Assistant initialization failed: ${error}`);
+  }
+}
+
+async function refreshConfiguration() {
+  try {
+    if (!extensionContext) {
+      return;
+    }
+    config = await loadConfig(extensionContext.extensionPath);
+    updateAll();
+  } catch (error) {
+    vscode.window.showErrorMessage(`Novel Writing Assistant configuration refresh failed: ${error}`);
   }
 }
 
@@ -183,7 +196,22 @@ function t(key: string): string {
 }
 
 async function loadConfig(extensionPath: string): Promise<AssistantConfig> {
+  const settings = vscode.workspace.getConfiguration('novelWritingAssistant');
+  const enabledFileExtensions = settings.get<string[]>('enabledFileExtensions');
+  const highlightItems = settings.get<HighlightRule[]>('highlightItems');
   const configPath = path.join(extensionPath, CONFIG_FILE_NAME);
+
+  const fileConfig = await loadConfigFromFile(configPath);
+
+  return {
+    enabledFileExtensions: Array.isArray(enabledFileExtensions) && enabledFileExtensions.length > 0
+      ? enabledFileExtensions.map(item => item.toLowerCase())
+      : fileConfig.enabledFileExtensions,
+    highlightItems: Array.isArray(highlightItems) ? highlightItems : fileConfig.highlightItems
+  };
+}
+
+async function loadConfigFromFile(configPath: string): Promise<AssistantConfig> {
   try {
     const raw = await fs.promises.readFile(configPath, 'utf8');
     const parsed = JSON.parse(raw) as Partial<AssistantConfig>;
@@ -275,7 +303,6 @@ function updateAll() {
   wordCountStatusBar.show();
 
   applyDecorations(editor);
-  viewProvider?.refresh();
 }
 
 function hideAllStatusBars() {
@@ -283,7 +310,6 @@ function hideAllStatusBars() {
   typingStatusBar.hide();
   speedStatusBar.hide();
   wordCountStatusBar.hide();
-  viewProvider?.refresh();
 }
 
 function getCurrentTypingMs(now: number) {
@@ -357,50 +383,6 @@ function disposeDecorations() {
   decorationTypes.length = 0;
 }
 
-function getDashboardState(): DashboardState {
-  const editor = vscode.window.activeTextEditor;
-  const supported = !!editor && isSupportedDocument(editor.document);
-  const now = Date.now();
-  const runtimeMs = now - windowOpenTime;
-  const typingMs = getCurrentTypingMs(now);
-  const charsPerMinute = typingMs > 0 ? typedCharactersCount / (typingMs / 60000) : 0;
-  const charsPerHour = charsPerMinute * 60;
-  const wordCount = editor?.document.getText().length ?? 0;
-  return {
-    title: t('dashboardTitle'),
-    language: getLocale() === 'zh-CN' ? '中文' : 'English',
-    runtime: formatDuration(runtimeMs),
-    activeTyping: formatDuration(typingMs),
-    speedPerMinute: `${charsPerMinute.toFixed(1)}/min`,
-    speedPerHour: `${charsPerHour.toFixed(1)}/h`,
-    wordCount: `${wordCount}`,
-    supportedStatus: supported ? t('statusEnabled') : t('statusDisabled'),
-    extensions: config.enabledFileExtensions.join(', '),
-    rules: config.highlightItems,
-    placeholder: t('placeholder'),
-    buttons: {
-      refresh: t('refresh'),
-      openConfig: t('openConfig'),
-      addSelection: t('addSelection'),
-      clearRules: t('clearRules'),
-      save: t('save')
-    },
-    labels: {
-      runtime: t('runtime'),
-      typing: t('typing'),
-      speed: t('speed'),
-      words: t('words'),
-      fileTypes: t('fileTypes'),
-      highlightRules: t('highlightRules'),
-      extensionHint: t('extensionHint'),
-      ruleHint: t('ruleHint'),
-      statusEnabled: t('statusEnabled'),
-      statusDisabled: t('statusDisabled'),
-      languageLabel: t('languageLabel')
-    }
-  };
-}
-
 async function openConfigFile() {
   const configPath = getConfigPath();
   const uri = vscode.Uri.file(configPath);
@@ -412,6 +394,10 @@ async function openConfigFile() {
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc);
   }
+}
+
+async function openSettings() {
+  await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:shayo.novel-writing-assistant');
 }
 
 async function handleHighlightSelection() {
@@ -457,182 +443,4 @@ async function clearHighlightRules() {
   await saveConfig();
   updateAll();
   vscode.window.showInformationMessage(t('rulesCleared'));
-}
-
-class NovelWritingAssistantViewProvider implements vscode.WebviewViewProvider {
-  private view?: vscode.WebviewView;
-
-  resolveWebviewView(webviewView: vscode.WebviewView, _context: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken): void | Thenable<void> {
-    this.view = webviewView;
-    webviewView.webview.options = { enableScripts: true };
-    webviewView.webview.html = this.getHtml(webviewView.webview);
-
-    webviewView.webview.onDidReceiveMessage(async message => {
-      switch (message.type) {
-        case 'refresh':
-          this.refresh();
-          break;
-        case 'save-settings': {
-          const text = String(message.extensions ?? '');
-          const extensions = text.split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
-          config.enabledFileExtensions = extensions.length ? extensions : DEFAULT_CONFIG.enabledFileExtensions;
-          const rawRules = Array.isArray(message.highlightRules) ? message.highlightRules : [];
-          config.highlightItems = rawRules
-            .map((rule: { text?: string; color?: string }) => ({ text: String(rule.text ?? '').trim(), color: String(rule.color ?? '#ffeb3b') }))
-            .filter((rule: { text: string; color: string }) => rule.text);
-          await saveConfig();
-          updateAll();
-          vscode.window.showInformationMessage(t('saveSuccess'));
-          break;
-        }
-        case 'add-selection': {
-          await handleHighlightSelection();
-          this.refresh();
-          break;
-        }
-        case 'open-config': {
-          await openConfigFile();
-          break;
-        }
-        case 'clear-rules': {
-          await clearHighlightRules();
-          this.refresh();
-          break;
-        }
-      }
-    });
-
-    this.refresh();
-  }
-
-  refresh() {
-    if (!this.view) {
-      return;
-    }
-    const state = getDashboardState();
-    this.view.webview.postMessage({ type: 'update', state });
-  }
-
-  private getHtml(webview: vscode.Webview): string {
-    const nonce = this.getNonce();
-    return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} https:;" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Novel Writing Assistant</title>
-    <style>
-      :root { color-scheme: light dark; --bg: var(--vscode-editorWidget-background); --card: var(--vscode-editorWidget-border); --text: var(--vscode-foreground); --muted: var(--vscode-descriptionForeground); --accent: var(--vscode-button-background); --accent-text: var(--vscode-button-foreground); }
-      body { font-family: var(--vscode-font-family); margin: 0; padding: 12px; background: transparent; color: var(--text); }
-      .card { background: color-mix(in srgb, var(--bg) 88%, transparent); border: 1px solid var(--card); border-radius: 12px; padding: 12px; margin-bottom: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
-      .title { font-size: 1.05rem; font-weight: 600; margin-bottom: 8px; }
-      .grid { display: grid; gap: 8px; }
-      .metric { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
-      .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, transparent); font-size: 0.85rem; }
-      label { display: block; font-size: 0.85rem; margin-bottom: 4px; color: var(--muted); }
-      input, textarea, button { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--card); padding: 7px 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); margin-bottom: 8px; }
-      textarea { min-height: 90px; resize: vertical; }
-      button { cursor: pointer; background: var(--accent); color: var(--accent-text); border: none; font-weight: 600; }
-      .row { display: flex; gap: 8px; }
-      .row button { flex: 1; }
-      .hint { font-size: 0.8rem; color: var(--muted); margin-top: -4px; margin-bottom: 8px; }
-      .status { font-size: 0.9rem; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <div class="title" id="title">Loading…</div>
-      <div class="status" id="status">Waiting for data…</div>
-    </div>
-    <div class="card">
-      <div class="grid">
-        <div class="metric"><span id="runtime-label">Runtime</span><strong id="runtime-value">--</strong></div>
-        <div class="metric"><span id="typing-label">Typing</span><strong id="typing-value">--</strong></div>
-        <div class="metric"><span id="speed-label">Speed</span><strong id="speed-value">--</strong></div>
-        <div class="metric"><span id="words-label">Words</span><strong id="words-value">--</strong></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="row">
-        <button id="refresh-btn">Refresh</button>
-        <button id="config-btn">Open config</button>
-      </div>
-      <div class="row">
-        <button id="selection-btn">Add current selection</button>
-        <button id="clear-btn">Clear rules</button>
-      </div>
-    </div>
-    <div class="card">
-      <label for="extensions" id="extensions-label">Enabled file types</label>
-      <input id="extensions" type="text" />
-      <div class="hint" id="extensions-hint">Enter multiple file types separated by commas</div>
-      <label for="rules" id="rules-label">Highlight rules</label>
-      <textarea id="rules"></textarea>
-      <div class="hint" id="rules-hint">One rule per line, format: text|color</div>
-      <button id="save-btn">Save settings</button>
-    </div>
-    <script nonce="${nonce}">
-      const vscode = acquireVsCodeApi();
-      const state = { extensions: '', rules: '' };
-      function render(data) {
-        document.getElementById('title').textContent = data.title;
-        document.getElementById('status').textContent = data.supportedStatus;
-        document.getElementById('runtime-label').textContent = data.labels.runtime;
-        document.getElementById('typing-label').textContent = data.labels.typing;
-        document.getElementById('speed-label').textContent = data.labels.speed;
-        document.getElementById('words-label').textContent = data.labels.words;
-        document.getElementById('runtime-value').textContent = data.runtime;
-        document.getElementById('typing-value').textContent = data.activeTyping;
-        document.getElementById('speed-value').textContent = data.speedPerMinute + ' · ' + data.speedPerHour;
-        document.getElementById('words-value').textContent = data.wordCount;
-        document.getElementById('extensions-label').textContent = data.labels.fileTypes;
-        document.getElementById('extensions-hint').textContent = data.labels.extensionHint;
-        document.getElementById('rules-label').textContent = data.labels.highlightRules;
-        document.getElementById('rules-hint').textContent = data.labels.ruleHint;
-        document.getElementById('refresh-btn').textContent = data.buttons.refresh;
-        document.getElementById('config-btn').textContent = data.buttons.openConfig;
-        document.getElementById('selection-btn').textContent = data.buttons.addSelection;
-        document.getElementById('clear-btn').textContent = data.buttons.clearRules;
-        document.getElementById('save-btn').textContent = data.buttons.save;
-        document.getElementById('extensions').value = data.extensions;
-        state.extensions = data.extensions;
-        document.getElementById('rules').value = data.rules.map(function(rule) {
-          return rule.text + '|' + rule.color;
-        }).join('\n');
-        state.rules = document.getElementById('rules').value;
-      }
-      window.addEventListener('message', event => {
-        const message = event.data;
-        if (message.type === 'update') {
-          render(message.state);
-        }
-      });
-      document.getElementById('refresh-btn').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
-      document.getElementById('config-btn').addEventListener('click', () => vscode.postMessage({ type: 'open-config' }));
-      document.getElementById('selection-btn').addEventListener('click', () => vscode.postMessage({ type: 'add-selection' }));
-      document.getElementById('clear-btn').addEventListener('click', () => vscode.postMessage({ type: 'clear-rules' }));
-      document.getElementById('save-btn').addEventListener('click', () => {
-        const extensions = document.getElementById('extensions').value;
-        const rulesText = document.getElementById('rules').value;
-        const highlightRules = rulesText.split(/\n/).map(line => line.trim()).filter(Boolean).map(line => {
-          const [text, color] = line.split('|');
-          return { text: text ? text.trim() : '', color: color ? color.trim() : '#ffeb3b' };
-        }).filter(rule => rule.text);
-        vscode.postMessage({ type: 'save-settings', extensions, highlightRules });
-      });
-      vscode.postMessage({ type: 'refresh' });
-    </script>
-  </body>
-</html>`;
-  }
-
-  private getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-      text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-  }
 }

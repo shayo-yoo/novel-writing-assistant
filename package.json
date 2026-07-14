@@ -2,7 +2,8 @@
   "name": "novel-writing-assistant",
   "displayName": "写作助手",
   "description": "VS Code 扩展，用于小说写作帮助，包括打字统计、持续时间跟踪、字数统计、可配置的文本突出显示和文件类型过滤。",
-  "version": "0.0.1",
+  "icon": "images/icon.png",
+  "version": "0.0.2",
   "publisher": "shayo",
   "repository": {
   "type": "git",
@@ -17,41 +18,32 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:novelWritingAssistant.openConfig",
+    "onCommand:novelWritingAssistant.openSettings",
     "onCommand:novelWritingAssistant.highlightSelection",
     "onCommand:novelWritingAssistant.clearHighlights"
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "novelWritingAssistantContainer",
-          "title": "Novel Writing Assistant",
-          "icon": "media/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "novelWritingAssistantContainer": [
-        {
-            "icon": "icon.png",
-            "id": "novelWritingAssistantView",
-             "name": "Dashboard"
-        }
-      ]
-    },
     "commands": [
       {
         "command": "novelWritingAssistant.openConfig",
-        "title": "Open Novel Writing Assistant Config"
+        "title": "打开写作助手配置 (Open config file)",
+        "category": "小说写作助手"
+      },
+      {
+        "command": "novelWritingAssistant.openSettings",
+        "title": "打开写作助手设置 (Open extension settings)",
+        "category": "小说写作助手"
       },
       {
         "command": "novelWritingAssistant.highlightSelection",
-        "title": "Highlight Selected Text"
+        "title": "高亮选中文本 (Highlight selected text)",
+        "category": "小说写作助手"
       },
       {
         "command": "novelWritingAssistant.clearHighlights",
-        "title": "Clear All Highlight Rules"
+        "title": "清除高亮规则 (Clear highlight rules)",
+        "category": "小说写作助手"
       }
     ],
     "menus": {
@@ -62,6 +54,51 @@
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "小说写作助手",
+      "properties": {
+        "novelWritingAssistant.enabledFileExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "md",
+            "txt",
+            "markdown",
+            "json",
+            "js",
+            "ts",
+            "py",
+            "java",
+            "c",
+            "cpp",
+            "cs",
+            "html",
+            "css",
+            "xml"
+          ],
+          "description": "启用的文件格式。可以在 VS Code 设置 UI 中进行修改。"
+        },
+        "novelWritingAssistant.highlightItems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              }
+            },
+            "required": ["text", "color"]
+          },
+          "default": [],
+          "description": "高亮规则列表。每个对象包含 text 和 color。"
+        }
+      }
     }
   },
   "scripts": {
