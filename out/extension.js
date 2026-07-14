@@ -42,7 +42,28 @@ const EXTENSION_NAME = 'novel-writing-assistant';
 const CONFIG_FILE_NAME = `${EXTENSION_NAME}.config.json`;
 const DEFAULT_CONFIG = {
     enabledFileExtensions: ['md', 'txt', 'markdown', 'json', 'js', 'ts', 'py', 'java', 'c', 'cpp', 'cs', 'html', 'css', 'xml'],
-    highlightItems: []
+    highlightItems: [],
+    countMode: 'words'
+};
+const COUNT_MODES = [
+    'words',
+    'hanzi',
+    'hanziWithoutPunctuation',
+    'cjkCharacters',
+    'nonWhitespaceCharacters',
+    'characters',
+    'nonAsciiCodePoints',
+    'codePoints'
+];
+const COUNT_MODE_LABEL_KEYS = {
+    words: 'countModeWords',
+    hanzi: 'countModeHanzi',
+    hanziWithoutPunctuation: 'countModeHanziWithoutPunctuation',
+    cjkCharacters: 'countModeCJKCharacters',
+    nonWhitespaceCharacters: 'countModeNonWhitespaceCharacters',
+    characters: 'countModeCharacters',
+    nonAsciiCodePoints: 'countModeNonAsciiCodePoints',
+    codePoints: 'countModeCodePoints'
 };
 const TRANSLATIONS = {
     'zh-CN': {
@@ -51,6 +72,14 @@ const TRANSLATIONS = {
         typing: '有效输入',
         speed: '输入速度',
         words: '字数',
+        countModeWords: '字词数',
+        countModeHanzi: '汉字',
+        countModeHanziWithoutPunctuation: '汉字(不含标点)',
+        countModeCJKCharacters: 'CJK字符',
+        countModeNonWhitespaceCharacters: '非空白字符',
+        countModeCharacters: '字符数',
+        countModeNonAsciiCodePoints: '非ASCII码位',
+        countModeCodePoints: '码位数',
         fileTypes: '生效文件格式',
         highlightRules: '高亮规则',
         extensionHint: '输入多个文件格式，用英文逗号分隔',
@@ -75,6 +104,14 @@ const TRANSLATIONS = {
         typing: 'Active typing',
         speed: 'Typing speed',
         words: 'Words',
+        countModeWords: 'Word count',
+        countModeHanzi: 'Hanzi',
+        countModeHanziWithoutPunctuation: 'Hanzi (no punctuation)',
+        countModeCJKCharacters: 'CJK characters',
+        countModeNonWhitespaceCharacters: 'Non-whitespace characters',
+        countModeCharacters: 'Characters',
+        countModeNonAsciiCodePoints: 'Non-ASCII code points',
+        countModeCodePoints: 'Code points',
         fileTypes: 'Enabled file types',
         highlightRules: 'Highlight rules',
         extensionHint: 'Enter multiple file formats separated by commas',
@@ -165,17 +202,61 @@ function t(key) {
     const locale = getLocale();
     return TRANSLATIONS[locale]?.[key] ?? TRANSLATIONS.en[key] ?? key;
 }
+function isValidCountMode(value) {
+    return typeof value === 'string' && COUNT_MODES.includes(value);
+}
+function getCountLabel() {
+    const labelKey = COUNT_MODE_LABEL_KEYS[config.countMode];
+    return t(labelKey);
+}
+function getTextCount(document) {
+    const text = document.getText();
+    switch (config.countMode) {
+        case 'words': {
+            const matches = text.match(/([\p{L}\p{N}_]+)/gu);
+            return matches ? matches.length : 0;
+        }
+        case 'hanzi': {
+            const matches = text.match(/[\p{Script=Han}]/gu);
+            return matches ? matches.length : 0;
+        }
+        case 'hanziWithoutPunctuation': {
+            const matches = text.match(/[\p{Script=Han}]/gu);
+            return matches ? matches.length : 0;
+        }
+        case 'cjkCharacters': {
+            const matches = text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu);
+            return matches ? matches.length : 0;
+        }
+        case 'nonWhitespaceCharacters': {
+            return text.replace(/\s+/g, '').length;
+        }
+        case 'characters': {
+            return text.length;
+        }
+        case 'nonAsciiCodePoints': {
+            return Array.from(text).filter(ch => ch.codePointAt(0) > 127).length;
+        }
+        case 'codePoints': {
+            return Array.from(text).length;
+        }
+        default:
+            return text.length;
+    }
+}
 async function loadConfig(extensionPath) {
     const settings = vscode.workspace.getConfiguration('novelWritingAssistant');
     const enabledFileExtensions = settings.get('enabledFileExtensions');
     const highlightItems = settings.get('highlightItems');
+    const countMode = settings.get('countMode');
     const configPath = path.join(extensionPath, CONFIG_FILE_NAME);
     const fileConfig = await loadConfigFromFile(configPath);
     return {
         enabledFileExtensions: Array.isArray(enabledFileExtensions) && enabledFileExtensions.length > 0
             ? enabledFileExtensions.map(item => item.toLowerCase())
             : fileConfig.enabledFileExtensions,
-        highlightItems: Array.isArray(highlightItems) ? highlightItems : fileConfig.highlightItems
+        highlightItems: Array.isArray(highlightItems) ? highlightItems : fileConfig.highlightItems,
+        countMode: isValidCountMode(countMode) ? countMode : fileConfig.countMode
     };
 }
 async function loadConfigFromFile(configPath) {
@@ -186,7 +267,8 @@ async function loadConfigFromFile(configPath) {
             enabledFileExtensions: Array.isArray(parsed.enabledFileExtensions) && parsed.enabledFileExtensions.length > 0
                 ? parsed.enabledFileExtensions.map(item => item.toLowerCase())
                 : DEFAULT_CONFIG.enabledFileExtensions,
-            highlightItems: Array.isArray(parsed.highlightItems) ? parsed.highlightItems : []
+            highlightItems: Array.isArray(parsed.highlightItems) ? parsed.highlightItems : [],
+            countMode: isValidCountMode(parsed.countMode) ? parsed.countMode : DEFAULT_CONFIG.countMode
         };
     }
     catch (error) {
@@ -249,14 +331,14 @@ function updateAll() {
     const typingMs = getCurrentTypingMs(now);
     const charsPerMinute = typingMs > 0 ? typedCharactersCount / (typingMs / 60000) : 0;
     const charsPerHour = charsPerMinute * 60;
-    const wordCount = editor.document.getText().length;
+    const countValue = getTextCount(editor.document);
     runtimeStatusBar.text = `$(clock) ${formatDuration(runtimeMs)}`;
     runtimeStatusBar.show();
     typingStatusBar.text = `$(keyboard) ${formatDuration(typingMs)}`;
     typingStatusBar.show();
     speedStatusBar.text = `$(symbol-event) ${charsPerMinute.toFixed(1)}/min · ${charsPerHour.toFixed(1)}/h`;
     speedStatusBar.show();
-    wordCountStatusBar.text = `${t('words')} ${wordCount}`;
+    wordCountStatusBar.text = `${getCountLabel()} ${countValue}`;
     wordCountStatusBar.show();
     applyDecorations(editor);
 }

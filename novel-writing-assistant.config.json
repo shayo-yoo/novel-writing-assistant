@@ -16,5 +16,6 @@
     "xml"
   ],
   "highlightItems": [
-  ]
+  ],
+  "countMode": "words"
 }

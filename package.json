@@ -4,7 +4,7 @@
   "description": "VS Code 扩展，用于小说写作帮助，包括打字统计、持续时间跟踪、字数统计、可配置的文本突出显示和文件类型过滤。",
   "icon": "images/icon.png",
 
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "shayo",
   "repository": {
   "type": "git",
@@ -98,6 +98,21 @@
           },
           "default": [],
           "description": "高亮规则列表。每个对象包含 text 和 color。"
+        },
+        "novelWritingAssistant.countMode": {
+          "type": "string",
+          "enum": [
+            "words",
+            "hanzi",
+            "hanziWithoutPunctuation",
+            "cjkCharacters",
+            "nonWhitespaceCharacters",
+            "characters",
+            "nonAsciiCodePoints",
+            "codePoints"
+          ],
+          "default": "words",
+          "description": "字数统计方式。可选字词数、汉字、CJK字符、非空白字符、字符数、非ASCII码位和码位数。"
         }
       }
     }
