@@ -1,9 +1,9 @@
 {
   "name": "novel-writing-assistant",
-  "displayName": "Novel Writing Assistant",
-  "description": "A VS Code extension for novel writing assistance with typing stats, duration tracking, word count, configurable text highlighting, and file-type filtering.",
+  "displayName": "写作助手",
+  "description": "VS Code 扩展，用于小说写作帮助，包括打字统计、持续时间跟踪、字数统计、可配置的文本突出显示和文件类型过滤。",
   "version": "0.0.1",
-  "publisher": "local",
+  "publisher": "shayo",
   "engines": {
     "vscode": "^1.85.0"
   },
