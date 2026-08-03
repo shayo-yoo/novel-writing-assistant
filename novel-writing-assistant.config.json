@@ -17,5 +17,6 @@
   ],
   "highlightItems": [
   ],
-  "countMode": "words"
+  "countMode": "words",
+  "typingIdleTimeoutMs": 5000
 }

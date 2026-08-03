@@ -113,6 +113,12 @@
           ],
           "default": "words",
           "description": "字数统计方式。可选字词数、汉字、CJK字符、非空白字符、字符数、非ASCII码位和码位数。"
+        },
+        "novelWritingAssistant.typingIdleTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "description": "输入速度统计在无新输入后暂停的倒计时时长（毫秒）。"
         }
       }
     }

@@ -21,6 +21,7 @@ interface AssistantConfig {
   enabledFileExtensions: string[];
   highlightItems: HighlightRule[];
   countMode: CountMode;
+  typingIdleTimeoutMs: number;
 }
 
 interface DashboardState {
@@ -62,7 +63,8 @@ const CONFIG_FILE_NAME = `${EXTENSION_NAME}.config.json`;
 const DEFAULT_CONFIG: AssistantConfig = {
   enabledFileExtensions: ['md', 'txt', 'markdown', 'json', 'js', 'ts', 'py', 'java', 'c', 'cpp', 'cs', 'html', 'css', 'xml'],
   highlightItems: [],
-  countMode: 'words'
+  countMode: 'words',
+  typingIdleTimeoutMs: 5000
 };
 
 const COUNT_MODES: CountMode[] = [
@@ -249,6 +251,14 @@ function isValidCountMode(value: unknown): value is CountMode {
   return typeof value === 'string' && COUNT_MODES.includes(value as CountMode);
 }
 
+function normalizeTypingIdleTimeoutMillis(value: unknown): number {
+  const numericValue = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return DEFAULT_CONFIG.typingIdleTimeoutMs;
+  }
+  return Math.max(1000, Math.floor(numericValue));
+}
+
 function getCountLabel(): string {
   const labelKey = COUNT_MODE_LABEL_KEYS[config.countMode];
   return t(labelKey);
@@ -296,6 +306,7 @@ async function loadConfig(extensionPath: string): Promise<AssistantConfig> {
   const enabledFileExtensions = settings.get<string[]>('enabledFileExtensions');
   const highlightItems = settings.get<HighlightRule[]>('highlightItems');
   const countMode = settings.get<string>('countMode');
+  const typingIdleTimeoutMs = settings.get<number>('typingIdleTimeoutMs');
   const configPath = path.join(extensionPath, CONFIG_FILE_NAME);
 
   const fileConfig = await loadConfigFromFile(configPath);
@@ -305,7 +316,8 @@ async function loadConfig(extensionPath: string): Promise<AssistantConfig> {
       ? enabledFileExtensions.map(item => item.toLowerCase())
       : fileConfig.enabledFileExtensions,
     highlightItems: Array.isArray(highlightItems) ? highlightItems : fileConfig.highlightItems,
-    countMode: isValidCountMode(countMode) ? countMode : fileConfig.countMode
+    countMode: isValidCountMode(countMode) ? countMode : fileConfig.countMode,
+    typingIdleTimeoutMs: normalizeTypingIdleTimeoutMillis(typingIdleTimeoutMs) || fileConfig.typingIdleTimeoutMs
   };
 }
 
@@ -318,7 +330,8 @@ async function loadConfigFromFile(configPath: string): Promise<AssistantConfig> 
         ? parsed.enabledFileExtensions.map(item => item.toLowerCase())
         : DEFAULT_CONFIG.enabledFileExtensions,
       highlightItems: Array.isArray(parsed.highlightItems) ? parsed.highlightItems : [],
-      countMode: isValidCountMode(parsed.countMode) ? parsed.countMode : DEFAULT_CONFIG.countMode
+      countMode: isValidCountMode(parsed.countMode) ? parsed.countMode : DEFAULT_CONFIG.countMode,
+      typingIdleTimeoutMs: normalizeTypingIdleTimeoutMillis(parsed.typingIdleTimeoutMs)
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -340,10 +353,11 @@ function startTimer() {
   }
   timer = setInterval(() => {
     const now = Date.now();
-    if (typingActive && now - lastInputTime > 5000) {
+    const idleTimeoutMs = config.typingIdleTimeoutMs;
+    if (typingActive && now - lastInputTime > idleTimeoutMs) {
       typingAccumulatedMs += now - typingSegmentStart;
       typingActive = false;
-    } else if (!typingActive && now - lastInputTime <= 5000) {
+    } else if (!typingActive && now - lastInputTime <= idleTimeoutMs) {
       typingSegmentStart = now;
       typingActive = true;
     }

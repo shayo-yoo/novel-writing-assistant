@@ -15,6 +15,7 @@
 - `novelWritingAssistant.enabledFileExtensions`：启用的文件格式。
 - `novelWritingAssistant.highlightItems`：高亮规则列表，每个对象包含 `text` 和 `color`。
 - `novelWritingAssistant.countMode`：可设置为 `words`、`hanzi`、`hanziWithoutPunctuation`、`cjkCharacters`、`nonWhitespaceCharacters`、`characters`、`nonAsciiCodePoints` 或 `codePoints`。
+- `novelWritingAssistant.typingIdleTimeoutMs`：输入速度统计在无新输入后暂停前等待的毫秒数，默认值为 `5000`。
 
 扩展仍保留 `novel-writing-assistant.config.json` 文件兼容性，可继续通过该文件修改设置。
 

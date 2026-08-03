@@ -43,7 +43,8 @@ const CONFIG_FILE_NAME = `${EXTENSION_NAME}.config.json`;
 const DEFAULT_CONFIG = {
     enabledFileExtensions: ['md', 'txt', 'markdown', 'json', 'js', 'ts', 'py', 'java', 'c', 'cpp', 'cs', 'html', 'css', 'xml'],
     highlightItems: [],
-    countMode: 'words'
+    countMode: 'words',
+    typingIdleTimeoutMs: 5000
 };
 const COUNT_MODES = [
     'words',
@@ -205,6 +206,13 @@ function t(key) {
 function isValidCountMode(value) {
     return typeof value === 'string' && COUNT_MODES.includes(value);
 }
+function normalizeTypingIdleTimeoutMillis(value) {
+    const numericValue = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return DEFAULT_CONFIG.typingIdleTimeoutMs;
+    }
+    return Math.max(1000, Math.floor(numericValue));
+}
 function getCountLabel() {
     const labelKey = COUNT_MODE_LABEL_KEYS[config.countMode];
     return t(labelKey);
@@ -249,6 +257,7 @@ async function loadConfig(extensionPath) {
     const enabledFileExtensions = settings.get('enabledFileExtensions');
     const highlightItems = settings.get('highlightItems');
     const countMode = settings.get('countMode');
+    const typingIdleTimeoutMs = settings.get('typingIdleTimeoutMs');
     const configPath = path.join(extensionPath, CONFIG_FILE_NAME);
     const fileConfig = await loadConfigFromFile(configPath);
     return {
@@ -256,7 +265,8 @@ async function loadConfig(extensionPath) {
             ? enabledFileExtensions.map(item => item.toLowerCase())
             : fileConfig.enabledFileExtensions,
         highlightItems: Array.isArray(highlightItems) ? highlightItems : fileConfig.highlightItems,
-        countMode: isValidCountMode(countMode) ? countMode : fileConfig.countMode
+        countMode: isValidCountMode(countMode) ? countMode : fileConfig.countMode,
+        typingIdleTimeoutMs: normalizeTypingIdleTimeoutMillis(typingIdleTimeoutMs) || fileConfig.typingIdleTimeoutMs
     };
 }
 async function loadConfigFromFile(configPath) {
@@ -268,7 +278,8 @@ async function loadConfigFromFile(configPath) {
                 ? parsed.enabledFileExtensions.map(item => item.toLowerCase())
                 : DEFAULT_CONFIG.enabledFileExtensions,
             highlightItems: Array.isArray(parsed.highlightItems) ? parsed.highlightItems : [],
-            countMode: isValidCountMode(parsed.countMode) ? parsed.countMode : DEFAULT_CONFIG.countMode
+            countMode: isValidCountMode(parsed.countMode) ? parsed.countMode : DEFAULT_CONFIG.countMode,
+            typingIdleTimeoutMs: normalizeTypingIdleTimeoutMillis(parsed.typingIdleTimeoutMs)
         };
     }
     catch (error) {
@@ -289,11 +300,12 @@ function startTimer() {
     }
     timer = setInterval(() => {
         const now = Date.now();
-        if (typingActive && now - lastInputTime > 5000) {
+        const idleTimeoutMs = config.typingIdleTimeoutMs;
+        if (typingActive && now - lastInputTime > idleTimeoutMs) {
             typingAccumulatedMs += now - typingSegmentStart;
             typingActive = false;
         }
-        else if (!typingActive && now - lastInputTime <= 5000) {
+        else if (!typingActive && now - lastInputTime <= idleTimeoutMs) {
             typingSegmentStart = now;
             typingActive = true;
         }
